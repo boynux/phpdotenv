@@ -10,13 +10,40 @@ class Dotenv
      * If true, then environment variables will not be overwritten
      * @var bool
      */
-    protected static $immutable = true;
+    protected $immutable = true;
+    private $paths = array();
+
+    /**
+     * This a singleton class, this variable will keep a unique instance
+     * to this class if exists.
+     * @var Dotenv
+     */
+    protected static $instance = null;
+
+    /**
+     * This is an singleton class, so we don't let users create any instance 
+     * by protected classes ctor.
+     */
+    protected function __construct()
+    {}
+
+    public static function getInstance()
+    {
+        if (static::$instance === null) {
+            static::$instance = new self;
+        }
+     
+        return static::$instance;
+    }
 
     /**
      * Load `.env` file in given directory
      */
     public static function load($path, $file = '.env')
     {
+       
+        $self = static::getInstance();
+
         if (!is_string($file)) {
             $file = '.env';
         }
@@ -33,12 +60,18 @@ class Dotenv
             );
         }
 
-        // Read file into an array of lines with auto-detected line endings
-        $autodetect = ini_get('auto_detect_line_endings');
-        ini_set('auto_detect_line_endings', '1');
-        $lines = file($filePath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        ini_set('auto_detect_line_endings', $autodetect);
+        $self->parseFileContent(
+            $self->loadFileContentIntoArray($filePath)
+        );
+    }
 
+    protected function setPaths($filePaths = array())
+    {
+        
+    }
+
+    private function parseFileContent($lines)
+    {
         foreach ($lines as $line) {
             // Disregard comments
             if (strpos(trim($line), '#') === 0) {
@@ -46,9 +79,20 @@ class Dotenv
             }
             // Only use non-empty lines that look like setters
             if (strpos($line, '=') !== false) {
-                static::setEnvironmentVariable($line);
+                $this->setEnvironmentVariable($line);
             }
         }
+    }
+
+    private function loadFileContentIntoArray($filePath)
+    {
+        // Auto-detected line endings
+        $autodetect = ini_get('auto_detect_line_endings');
+        ini_set('auto_detect_line_endings', '1');
+        $lines = file($filePath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        ini_set('auto_detect_line_endings', $autodetect);
+
+        return $lines;
     }
 
     /**
@@ -64,11 +108,13 @@ class Dotenv
      */
     public static function setEnvironmentVariable($name, $value = null)
     {
-        list($name, $value) = static::normaliseEnvironmentVariable($name, $value);
+        $self = static::getInstance();
+
+        list($name, $value) = $self->normaliseEnvironmentVariable($name, $value);
 
         // Don't overwrite existing environment variables if we're immutable
         // Ruby's dotenv does this with `ENV[key] ||= value`.
-        if (static::$immutable === true && !is_null(static::findEnvironmentVariable($name))) {
+        if ($self->immutable === true && !is_null($self->findEnvironmentVariable($name))) {
             return;
         }
 
@@ -126,12 +172,12 @@ class Dotenv
      * @param $value
      * @return array
      */
-    protected static function normaliseEnvironmentVariable($name, $value)
+    protected function normaliseEnvironmentVariable($name, $value)
     {
-        list($name, $value) = static::splitCompoundStringIntoParts($name, $value);
-        $name  = static::sanitiseVariableName($name);
-        $value = static::sanitiseVariableValue($value);
-        $value = static::resolveNestedVariables($value);
+        list($name, $value) = $this->splitCompoundStringIntoParts($name, $value);
+        $name  = $this->sanitiseVariableName($name);
+        $value = $this->sanitiseVariableValue($value);
+        $value = $this->resolveNestedVariables($value);
 
         return array($name, $value);
     }
@@ -143,7 +189,7 @@ class Dotenv
      * @param $value
      * @return array
      */
-    protected static function splitCompoundStringIntoParts($name, $value)
+    protected function splitCompoundStringIntoParts($name, $value)
     {
         if (strpos($name, '=') !== false) {
             list($name, $value) = array_map('trim', explode('=', $name, 2));
@@ -192,7 +238,7 @@ class Dotenv
      * @param $name
      * @return string
      */
-    protected static function sanitiseVariableName($name)
+    protected function sanitiseVariableName($name)
     {
         return trim(str_replace(array('export ', '\'', '"'), '', $name));
     }
@@ -204,7 +250,7 @@ class Dotenv
      * @param $value
      * @return mixed
      */
-    protected static function resolveNestedVariables($value)
+    protected function resolveNestedVariables($value)
     {
         if (strpos($value, '$') !== false) {
             $value = preg_replace_callback(
@@ -249,7 +295,7 @@ class Dotenv
      */
     public static function isImmutable()
     {
-        return static::$immutable;
+        return static::getInstance()->immutable;
     }
 
     /**
@@ -257,7 +303,7 @@ class Dotenv
      */
     public static function makeImmutable()
     {
-        static::$immutable = true;
+        static::getInstance()->immutable = true;
     }
 
     /**
@@ -265,6 +311,6 @@ class Dotenv
      */
     public static function makeMutable()
     {
-        static::$immutable = false;
+        static::getInstance()->immutable = false;
     }
 }
